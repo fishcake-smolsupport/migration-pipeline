@@ -26,9 +26,9 @@ FROM
             CASE
                 WHEN mnp IS NOT NULL THEN 'Y'
                 ELSE 'N'
-            END AS MAP,
-            rate_plan,
-            evaluation_month,
+            END AS mnp,
+            rate_plan AS rateplan,
+            evaluation_month AS incentive_period,
             appr_userid
         FROM
             sdbpayment.pymt_prepaid_details b
