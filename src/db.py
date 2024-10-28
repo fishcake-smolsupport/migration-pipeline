@@ -1,72 +1,72 @@
-from sqlalchemy import create_engine, MetaData, Table, exc, text
+from sqlalchemy import create_engine, exc, text
+import pandas as pd
+
+class ResultSet:
+    def __init__(self, result_proxy, batch_size=1000):
+        """
+        Initialize ResultSet with a result proxy and optional batch size for chunking.
+        
+        :param result_proxy: The result set proxy from SQLAlchemy query execution.
+        :param batch_size: Number of rows to retrieve per chunk.
+        """
+        self.result_proxy = result_proxy
+        self.batch_size = batch_size
+        self.column_names = result_proxy.keys() if result_proxy else []
+
+    def as_dataframe(self) -> pd.DataFrame:
+        """Convert the result proxy to a DataFrame in manageable chunks."""
+        frames = []
+        if self.result_proxy is None:
+            print("Error: No results to convert.")
+            return pd.DataFrame()
+
+        # Fetch rows in chunks and add to frames
+        while True:
+            rows = self.result_proxy.fetchmany(self.batch_size)
+            if not rows:
+                break
+            frames.append(pd.DataFrame(rows, columns=self.column_names))
+
+        # Return empty DataFrame if frames are empty, avoiding concat error
+        if not frames:
+            print("No data retrieved.")
+            return pd.DataFrame(columns=self.column_names)
+        
+        return pd.concat(frames, ignore_index=True)
+
 
 class DatabaseConnector:
     def __init__(self, database_url: str):
-        self.database_url = database_url
-        self.engine = None
+        """
+        Initialize DatabaseConnector with a database URL.
         
-    def setup_engine(self):
-        try:
-            self.engine = create_engine(self.database_url)
-        except exc.SQLAlchemyError:
-            print(f"Error: SQLAlchemy connection failed.")
+        :param database_url: Database URL for connecting to the target database.
+        """
+        self.database_url = database_url
+        self.engine = self._create_engine()
+        self.result_set = None  # Initialize an empty result_set attribute
 
-        return self.engine
-           
-    def execute_query(self, statement: str) -> list:
+    def _create_engine(self):
+        """Create and return a SQLAlchemy engine."""
+        try:
+            engine = create_engine(self.database_url)
+            return engine
+        except exc.SQLAlchemyError as e:
+            print(f"Error: SQLAlchemy connection failed. {e}")
+            return None
+
+    def execute_query(self, statement: str, batch_size=1000) -> ResultSet:
+        """Executes a SQL query and assigns the result as a ResultSet."""
         if not self.engine:
             print("Error: No engine established.")
-            return []
+            return None
 
         try:
             with self.engine.connect() as connection:
-                results = connection.execute(text(statement))
-                
-            return results
+                result_proxy = connection.execute(text(statement))
+                self.result_set = ResultSet(result_proxy, batch_size=batch_size)
+            return self.result_set
         except exc.SQLAlchemyError as e:
             print(f"Error executing query: {e}")
             return None
 
-# class Table:
-#     def __init__(self, engine, table_schema: str, table_name: str):
-#         engine =  DatabaseConnector(db_url)
-#         metadata = MetaData()
-
-#         table = Table(
-#                         table_name, 
-#                         metadata, 
-#                         schema = table_schema,
-#                         autoload_with = engine
-#                     )
-
-#         return table
-
-# def get_some_cars(engine, metadata): 
-#   session = begin_session(engine)  
-
-#   Cars   = metadata.tables['Cars']
-#   Makes  = metadata.tables['CarManufacturers']
-
-#   cars_cols = [ getattr(Cars.c, each_one) for each_one in [
-#       'car_id',                   
-#       'car_selling_status',       
-#       'car_purchased_date', 
-#       'car_purchase_price_car']] + [
-#       Makes.c.car_manufacturer_name]
-
-#   statuses = {
-#       'selling'  : ['AVAILABLE','RESERVED'], 
-#       'physical' : ['ATOURLOCATION'] }
-
-#   inventory_conditions = alq.and_( 
-#       Cars.c.purchase_channel == "Inspection", 
-#       Cars.c.car_selling_status.in_( statuses['selling' ]),
-#       Cars.c.car_physical_status.in_(statuses['physical']),)
-
-#   the_query = ( session.query(*cars_cols).
-#       join(Makes, Cars.c.car_manufacturer_id == Makes.c.car_manufacturer_id).
-#       filter(inventory_conditions).
-#       statement )
-
-#   the_inventory = pd.read_sql(the_query, engine)
-#   return the_inventory
